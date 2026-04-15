@@ -7,10 +7,8 @@ from shared.types.shard import ShardInfo
 
 def _get_orchestrator_base_url() -> str:
     """Resolve the orchestrator base URL from env or default."""
-    base = os.environ.get("ORCHESTRATOR_URL", "orchestrator")
-    if not base.startswith("http"):
-        base = f"http://{base}:3356"
-    return base
+    url = os.environ.get("ORCHESTRATOR_URL", "http://orchestrator:3356")
+    return url
 
 
 class OrchestratorCommand:

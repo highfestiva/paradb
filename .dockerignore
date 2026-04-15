@@ -1,0 +1,15 @@
+__pycache__
+*.pyc
+.git
+.gitignore
+tests/
+features/
+agentic-workflow/
+scripts/
+k8s/
+data/
+*.md
+LICENSE.txt
+conftest.py
+Dockerfile.*
+.dockerignore

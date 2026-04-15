@@ -7,7 +7,7 @@ try_lock = TryLock()
 
 
 def balance_shards():
-    '''Balance so each shard have equal number of partitions.'''
+    """Balance so each shard have equal number of partitions."""
 
     # only one thread at a time
     with try_lock as locked:

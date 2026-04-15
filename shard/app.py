@@ -5,11 +5,9 @@ import os
 import socket
 import uuid
 from contextlib import asynccontextmanager
-
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 import requests
-import uvicorn
 
 from .document_storage import partition_index_for_id, write_document, read_document, delete_document
 from .query_engine import execute_query
@@ -19,14 +17,14 @@ from shared.types.shard import ShardInfo, ShardPartitionInfo
 
 
 DATA_DIR = os.environ.get("DATA_DIR", "./data/")
-SHARD_PORT = int(os.environ.get("SHARD_PORT", "3357"))
+SHARD_SERVICE_PORT = int(os.environ.get("SHARD_SERVICE_PORT", "3357"))
 
 app = FastAPI()
 shards: list[ShardPartitionInfo] = []
 partition_to_shard_host: dict[int, str] = {}
 
 
-@app.post('/document', status_code=201)
+@app.post("/document", status_code=201)
 async def create_or_upsert_document(request: Request):
     """Create or upsert a document. Forwards to owning shard if needed."""
     raw = await request.body()
@@ -51,7 +49,7 @@ async def create_or_upsert_document(request: Request):
         if is_forwarded:
             return JSONResponse(status_code=503, content={"error": "retry", "detail": "partition not owned"})
         resp = requests.post(
-            f"http://{owner}:{SHARD_PORT}/document",
+            f"http://{owner}:{SHARD_SERVICE_PORT}/document",
             json=body,
             headers={"X-Forwarded": "true"},
         )
@@ -66,7 +64,7 @@ async def create_or_upsert_document(request: Request):
     return JSONResponse(status_code=201, content=result)
 
 
-@app.delete('/document/{doc_id}')
+@app.delete("/document/{doc_id}")
 async def remove_document(doc_id: str):
     """Delete a document by ID. Treated as a write operation with ownership checks."""
     try:
@@ -79,7 +77,7 @@ async def remove_document(doc_id: str):
     hostname = socket.gethostname()
 
     if owner and owner != hostname:
-        resp = requests.delete(f"http://{owner}:{SHARD_PORT}/document/{doc_id}")
+        resp = requests.delete(f"http://{owner}:{SHARD_SERVICE_PORT}/document/{doc_id}")
         return JSONResponse(status_code=resp.status_code, content=resp.json())
 
     rw_lock = get_partition_lock(partition_idx)
@@ -93,7 +91,7 @@ async def remove_document(doc_id: str):
     return JSONResponse(status_code=200, content={"status": "deleted"})
 
 
-@app.post('/query')
+@app.post("/query")
 async def query_documents(request: Request):
     """Query documents with MongoDB-like filter."""
     body = await request.json()
@@ -101,22 +99,22 @@ async def query_documents(request: Request):
     return JSONResponse(status_code=200, content=results)
 
 
-@app.delete('/cmd/partition')
+@app.delete("/cmd/partition")
 def halt_flush_partition_writes(partition_index: int):
     """Halt writes to a partition by acquiring the write lock."""
     rw_lock = get_partition_lock(partition_index)
     rw_lock.acquire_write()
-    return {'status': 0}
+    return {"status": 0}
 
 
-@app.post('/cmd/partitions')
+@app.post("/cmd/partitions")
 def update_shards(shard_partition_infos: list[ShardPartitionInfo]):
     global shards
     shards = shard_partition_infos
     for shard in shard_partition_infos:
         for partition in shard.partitions:
             partition_to_shard_host[partition] = shard.hostname
-    return {'status': 0}
+    return {"status": 0}
 
 
 @asynccontextmanager
@@ -128,7 +126,3 @@ async def lifespan(app: FastAPI):
 
 
 app.router.lifespan_context = lifespan
-
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=SHARD_PORT)

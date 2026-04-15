@@ -4,24 +4,97 @@ This is a slow DB for education purposes only. Mostly for mine, I wrote it to le
 
 ## Architecture
 
-This runs in minikube. The DB is written in Python, has a single orchestrator and a number of dynamic shards. The
-storage is separate, and scale-to-zero would be possible to implement fairly easily, but the orchestrator would still
-need to be running. The shards scales horizontally in a linear fasion.
+This runs in minikube. The DB is written in Python (FastAPI + Uvicorn), has a single **orchestrator** and a number of
+dynamic **shards**. Storage is separate from compute (shared disk volume), and scale-to-zero would be possible to
+implement fairly easily, but the orchestrator would still need to be running. The shards scale horizontally in a linear
+fashion.
 
-Each shard is responsible for a number of partitions, for which it can write documents. To determine to which partition
-a document belongs, some bits in its document ID is used. A shard that receives a write for a document, that belongs to
-a partition for which it does not have write permission, will forward that write to the owning shard.
+Each shard is responsible for a number of partitions (1024 total, derived from the low 10 bits of the document UUID).
+A shard that receives a write for a document belonging to a partition it does not own will forward the write to the
+owning shard.
 
-*Some graph...*
-
-## Start the ParaDB in minikube
-
-```bash
-...
+```
+                         ┌──────────────┐
+                         │ Orchestrator │ :3356
+                         │  (balancer)  │
+                         └──┬───┬───┬───┘
+                ┌───────────┘   │   └───────────┐
+                ▼               ▼               ▼
+          ┌──────────┐   ┌──────────┐   ┌──────────┐
+          │ Shard 0  │   │ Shard 1  │   │ Shard 2  │  :3357
+          │ P0..P341 │◄─►│P342..P682│◄─►│P683..1023│
+          └────┬─────┘   └────┬─────┘   └────┬─────┘
+               │              │              │
+               └──────────────┼──────────────┘
+                              ▼
+                     ┌────────────────┐
+                     │  Shared Volume │
+                     │  /data/{hex}/  │
+                     │   *.json docs  │
+                     └────────────────┘
 ```
 
-### Running tests
+### Key endpoints
+
+| Component   | Endpoint                            | Description                          |
+|-------------|-------------------------------------|--------------------------------------|
+| Shard       | `POST /document`                    | Create/upsert a document             |
+| Shard       | `DELETE /document/{doc_id}`         | Delete a document                    |
+| Shard       | `POST /query`                       | MongoDB-like query (`$gt`, `$lt`, `$exists`) |
+| Orchestrator| `POST /shard`                       | Register/heartbeat a shard           |
+| Orchestrator| `DELETE /shard?hostname=...`        | Gracefully remove a shard            |
+
+### Environment variables
+
+| Variable             | Default                     | Description                          |
+|----------------------|-----------------------------|--------------------------------------|
+| `DATA_DIR`           | `./data/`                   | Root directory for document storage  |
+| `SHARD_SERVICE_PORT` | `3357`                      | HTTP port for shard                  |
+| `ORCHESTRATOR_URL`   | `http://orchestrator:3356`  | Orchestrator url (default `http://orchestrator:3356`) |
+
+## Prerequisites
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) with Kubernetes enabled, or
+- [minikube](https://minikube.sigs.k8s.io/docs/start/)
+- Python 3.11+
+- `kubectl`
+
+## Running locally (without Kubernetes)
 
 ```bash
-...
+pip install fastapi uvicorn httpx pydantic
+
+# Terminal 1 — start the orchestrator
+python -m orchestrator
+
+# Terminal 2 — start a shard
+DATA_DIR=./data ORCHESTRATOR_URL=http://localhost:3356 python -m shard
+```
+
+## Start ParaDB in minikube (Docker driver)
+
+```bash
+scripts/start-minikube.sh
+```
+
+### Tearing down
+
+```bash
+scripts/stop-minikube.sh
+```
+
+## Running stress tests
+
+Below is a quick way to hammer the database with concurrent writes and reads using Python and `httpx`:
+
+```bash
+pip install httpx
+python scripts/stress_test.py --url http://localhost:3357 --writers 10 --readers 5 --duration 30
+```
+
+## Running tests
+
+```bash
+pip install pytest httpx fastapi uvicorn pydantic
+python -m pytest
 ```

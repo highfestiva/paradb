@@ -106,7 +106,7 @@ class TestRebalanceUsesTryLock:
         _make_shard("shard-b", list(range(10, 15)))
 
         execution_count = {"count": 0}
-        original_balance = balance_shards.__wrapped__ if hasattr(balance_shards, '__wrapped__') else None
+        original_balance = balance_shards.__wrapped__ if hasattr(balance_shards, "__wrapped__") else None
 
         barrier = threading.Barrier(2, timeout=5)
         results = []

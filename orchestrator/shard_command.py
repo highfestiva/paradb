@@ -2,7 +2,7 @@ import requests
 
 from .shards import Shard, all_shards
 
-SHARD_PORT = 3357
+SHARD_SERVICE_PORT = 3357
 
 
 class ShardCommand:
@@ -13,7 +13,7 @@ class ShardCommand:
 
     def halt_flush_partition_writes(self, partition_index: int):
         """Tell the shard to halt writes on a specific partition."""
-        url = f"http://{self.shard.hostname}:{SHARD_PORT}/cmd/partition"
+        url = f"http://{self.shard.hostname}:{SHARD_SERVICE_PORT}/cmd/partition"
         requests.delete(url, params={"partition_index": partition_index})
 
     def send_partitions(self):
@@ -25,7 +25,7 @@ class ShardCommand:
                 "load": s.load,
                 "partitions": [p.index for p in s.partitions],
             })
-        url = f"http://{self.shard.hostname}:{SHARD_PORT}/cmd/partitions"
+        url = f"http://{self.shard.hostname}:{SHARD_SERVICE_PORT}/cmd/partitions"
         requests.post(url, json=payload)
 
 

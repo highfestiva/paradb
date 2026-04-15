@@ -4,13 +4,13 @@ from shared.types.partition_bits import PARTITION_INDEXES
 class Partition:
     def __init__(self, index):
         self.index: int = index
-        self.owner: str = ''
+        self.owner: str = ""
 
     def release(self):
-        self.owner = ''
+        self.owner = ""
 
 
-INDEX_TO_PARTITION: dict[int, 'Partition'] = {}
+INDEX_TO_PARTITION: dict[int, "Partition"] = {}
 
 
 def init():
