@@ -1,0 +1,9 @@
+.env
+__pycache__/
+node_modules/
+dist/
+agentic-workflow/
+skills/
+features/
+.aider*
+.github/
