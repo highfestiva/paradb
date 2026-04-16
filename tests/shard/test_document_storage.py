@@ -119,7 +119,7 @@ class TestAtomicWriteViaTemporaryFile:
         write_document(data_dir, {"name": "test"})
 
         # then no .tmp_ files remain
-        tmp_files = glob.glob(os.path.join(data_dir, "**", ".tmp_*.json"), recursive=True)
+        tmp_files = glob.glob(os.path.join(data_dir, "**", ".tmp_*.tmp-json"), recursive=True)
         assert tmp_files == []
 
     def test_target_file_is_valid_json(self, data_dir):

@@ -1,5 +1,6 @@
 """Document write locking — per-partition RWLock and per-document-ID lock."""
 
+import time
 import threading
 from shared.rwlock import RWLock
 
@@ -10,8 +11,28 @@ _partition_locks: dict[int, RWLock] = {}
 _partition_locks_mutex = threading.Lock()
 
 # Per-document-ID write locks to serialize concurrent writes to the same document.
-_document_locks: dict[str, threading.Lock] = {}
+_document_locks: set[str] = set()
 _document_locks_mutex = threading.Lock()
+
+
+class DocLock:
+    def __init__(self, doc_id):
+        self.doc_id = doc_id
+
+    def __enter__(self):
+        for _ in range(100):
+            with _document_locks_mutex:
+                if self.doc_id not in _document_locks:
+                    _document_locks.add(self.doc_id)
+                    break
+            print(f'waiting for document {self.doc_id} to be freed')
+            time.sleep(0.01)
+        else:
+            raise TimeoutError("Unable to get document write access")
+
+    def __exit__(self, exc_type, exc, tb):
+        with _document_locks_mutex:
+            _document_locks.remove(self.doc_id)
 
 
 def get_partition_lock(partition_index: int) -> RWLock:
@@ -22,12 +43,8 @@ def get_partition_lock(partition_index: int) -> RWLock:
         return _partition_locks[partition_index]
 
 
-def get_document_lock(doc_id: str) -> threading.Lock:
-    """Get or create a lock for a specific document ID."""
-    with _document_locks_mutex:
-        if doc_id not in _document_locks:
-            _document_locks[doc_id] = threading.Lock()
-        return _document_locks[doc_id]
+def get_document_lock(doc_id: str) -> DocLock:
+    return DocLock(doc_id)
 
 
 def reset():

@@ -1,10 +1,12 @@
 """Document storage layer — handles reading, writing, and deleting JSON documents on disk."""
 
+import glob
 import json
 import os
 import uuid
 from typing import Any
 
+from shared.file_utils import file_replace_retry
 from shared.types.partition_bits import PARTITION_MASK
 
 
@@ -36,15 +38,17 @@ def write_document(data_dir: str, document: dict[str, Any]) -> dict[str, Any]:
         file_path = _doc_path(data_dir, doc_id)
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
 
-        tmp_path = os.path.join(data_dir, f".tmp_{doc_id}.json")
+        tmp_path = os.path.join(data_dir, f".tmp_{doc_id}.tmp-json")
+        print("writing tmp:", tmp_path)
         with open(tmp_path, "w") as f:
             json.dump(doc, f)
-        os.replace(tmp_path, file_path)
+        file_replace_retry(tmp_path, file_path, 5)
     except OSError as ex:
         print("replace failed:", ex)
-        print("tmp:", tmp_path)
-        print("dst:", file_path)
-        print("same device:", os.stat(tmp_path).st_dev == os.stat(os.path.dirname(file_path)).st_dev)
+        print("tmp:", tmp_path, "exists:", os.path.exists(tmp_path))
+        print("dst:", file_path, "exists:", os.path.exists(file_path))
+        if os.path.exists(tmp_path) and os.path.exists(os.path.dirname(file_path)):
+            print("same device:", os.stat(tmp_path).st_dev == os.stat(os.path.dirname(file_path)).st_dev)
         raise
 
     return doc
@@ -73,15 +77,10 @@ def delete_document(data_dir: str, doc_id: str) -> bool:
 def scan_all_documents(data_dir: str) -> list[dict[str, Any]]:
     """Read and return every document on disk."""
     results = []
-    if not os.path.isdir(data_dir):
-        return results
-    for entry in os.scandir(data_dir):
-        if entry.is_dir():
-            for file_entry in os.scandir(entry.path):
-                if file_entry.name.endswith(".json") and not file_entry.name.startswith(".tmp_"):
-                    try:
-                        with open(file_entry.path) as f:
-                            results.append(json.load(f))
-                    except (json.JSONDecodeError, OSError):
-                        pass
+    for entry in glob.glob(os.path.join(data_dir, "*", "*.json")):
+        try:
+            with open(entry) as f:
+                results.append(json.load(f))
+        except (json.JSONDecodeError, OSError):
+            pass
     return results
