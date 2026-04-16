@@ -13,6 +13,7 @@ from .document_storage import partition_index_for_id, write_document, read_docum
 from .query_engine import execute_query
 from .document_locking import get_partition_lock, get_document_lock
 from .orchestrator_command import OrchestratorCommand
+from shared.file_utils import osfunc_retry
 from shared.types.shard import ShardInfo, ShardPartitionInfo
 
 
@@ -55,11 +56,14 @@ async def create_or_upsert_document(request: Request):
         )
         return JSONResponse(status_code=resp.status_code, content=resp.json())
 
-    rw_lock = get_partition_lock(partition_idx)
-    with rw_lock.for_reading():
-        doc_lock = get_document_lock(str(doc_id))
-        with doc_lock:
-            result = write_document(DATA_DIR, body)
+    try:
+        rw_lock = get_partition_lock(partition_idx)
+        with rw_lock.for_reading():
+            doc_lock = get_document_lock(str(doc_id))
+            with doc_lock:
+                result = osfunc_retry(lambda: write_document(DATA_DIR, body), retries=3)
+    except TimeoutError:
+        return JSONResponse(status_code=500, content=dict(error="Unable to write document"))
 
     return JSONResponse(status_code=201, content=result)
 

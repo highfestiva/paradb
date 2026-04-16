@@ -49,7 +49,7 @@ def write_document(data_dir: str, document: dict[str, Any]) -> dict[str, Any]:
         print("dst:", file_path, "exists:", os.path.exists(file_path))
         if os.path.exists(tmp_path) and os.path.exists(os.path.dirname(file_path)):
             print("same device:", os.stat(tmp_path).st_dev == os.stat(os.path.dirname(file_path)).st_dev)
-        raise
+        raise ex
 
     return doc
 
