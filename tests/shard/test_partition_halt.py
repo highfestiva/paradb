@@ -6,9 +6,10 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
-from shard.app import app, partition_to_shard_host
+from shard.app import app, partition_to_shard_url
 from shard.document_locking import get_partition_lock, reset as reset_locks
 from shard.document_storage import write_document, partition_index_for_id
+from shard.url import get_host_url
 
 
 @pytest.fixture
@@ -25,10 +26,10 @@ def data_dir(tmp_path):
 @pytest.fixture(autouse=True)
 def reset_state():
     reset_locks()
-    partition_to_shard_host.clear()
+    partition_to_shard_url.clear()
     yield
     reset_locks()
-    partition_to_shard_host.clear()
+    partition_to_shard_url.clear()
 
 
 @pytest.fixture
@@ -40,9 +41,8 @@ class TestDeleteCmdPartitionHaltsWrites:
     def test_writes_blocked_after_halt(self, client, data_dir):
         # given a partition
         partition_index = 5
-        import socket
-        hostname = socket.gethostname()
-        partition_to_shard_host[partition_index] = hostname
+        url = get_host_url()
+        partition_to_shard_url[partition_index] = url
 
         # when we call DELETE /cmd/partition to halt writes
         response = client.delete("/cmd/partition", params={"partition_index": partition_index})
@@ -75,9 +75,8 @@ class TestWritesToNonHaltedPartitionsStillProceed:
 
         # when we write to a document in partition 6
         doc_id = uuid.UUID(int=6)  # lowest bits = 6
-        import socket
-        hostname = socket.gethostname()
-        partition_to_shard_host[6] = hostname
+        url = get_host_url()
+        partition_to_shard_url[6] = url
 
         completed = threading.Event()
         errors = []
@@ -134,9 +133,8 @@ class TestHaltedPartitionWriteResumesAndForwards:
         # given partition P is halted
         doc_id = uuid.UUID(int=7)
         partition_idx = partition_index_for_id(doc_id)
-        import socket
-        hostname = socket.gethostname()
-        partition_to_shard_host[partition_idx] = hostname
+        url = get_host_url()
+        partition_to_shard_url[partition_idx] = url
 
         rw_lock = get_partition_lock(partition_idx)
         rw_lock.acquire_write()
@@ -147,7 +145,7 @@ class TestHaltedPartitionWriteResumesAndForwards:
         def do_write():
             with rw_lock.for_reading():
                 # after resuming, check ownership — it may have changed
-                owner = partition_to_shard_host.get(partition_idx)
+                owner = partition_to_shard_url.get(partition_idx)
                 write_result["owner"] = owner
             write_completed.set()
 
@@ -158,7 +156,7 @@ class TestHaltedPartitionWriteResumesAndForwards:
         assert not write_completed.wait(timeout=0.2)
 
         # when ownership changes to another shard and halt is released
-        partition_to_shard_host[partition_idx] = "other-shard"
+        partition_to_shard_url[partition_idx] = "other-shard"
         rw_lock.release_write()
 
         # then the write thread resumes and sees the new owner

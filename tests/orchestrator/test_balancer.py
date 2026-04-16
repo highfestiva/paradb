@@ -1,22 +1,21 @@
 """Tests for the rebalancing algorithm."""
 
-import threading
-from unittest.mock import patch, MagicMock, call
-
 import pytest
+import threading
+from unittest.mock import patch, MagicMock
 
 from orchestrator.balancer import balance_shards
 from orchestrator.partitions import init as partitions_init, INDEX_TO_PARTITION
-from orchestrator.shards import NAME_TO_SHARD, Shard, init as shards_init
+from orchestrator.shards import URL_TO_SHARD, Shard, init as shards_init
 
 
 @pytest.fixture(autouse=True)
 def reset_state():
     partitions_init()
     shards_init()
-    NAME_TO_SHARD.clear()
+    URL_TO_SHARD.clear()
     yield
-    NAME_TO_SHARD.clear()
+    URL_TO_SHARD.clear()
 
 
 def _make_shard(name: str, partition_indices: list[int]) -> Shard:
@@ -24,7 +23,7 @@ def _make_shard(name: str, partition_indices: list[int]) -> Shard:
     shard = Shard(name)
     partitions = [INDEX_TO_PARTITION[i] for i in partition_indices]
     shard.add_partitions(partitions)
-    NAME_TO_SHARD[name] = shard
+    URL_TO_SHARD[name] = shard
     return shard
 
 
@@ -48,8 +47,8 @@ class TestNoRebalanceWhenDifferenceLessThan2:
         _make_shard("shard-1", list(range(512)))
         _make_shard("shard-2", list(range(512, 1024)))
 
-        original_a_count = len(NAME_TO_SHARD["shard-1"].partitions)
-        original_b_count = len(NAME_TO_SHARD["shard-2"].partitions)
+        original_a_count = len(URL_TO_SHARD["shard-1"].partitions)
+        original_b_count = len(URL_TO_SHARD["shard-2"].partitions)
 
         # when we balance
         with patch("orchestrator.balancer.ShardCommand"):
@@ -57,8 +56,8 @@ class TestNoRebalanceWhenDifferenceLessThan2:
                 balance_shards()
 
         # then nothing changes
-        assert len(NAME_TO_SHARD["shard-1"].partitions) == original_a_count
-        assert len(NAME_TO_SHARD["shard-2"].partitions) == original_b_count
+        assert len(URL_TO_SHARD["shard-1"].partitions) == original_a_count
+        assert len(URL_TO_SHARD["shard-2"].partitions) == original_b_count
 
 
 class TestRebalanceMovesPartition:
@@ -76,8 +75,8 @@ class TestRebalanceMovesPartition:
                 balance_shards()
 
         # then shard-a lost one partition and shard-b gained one
-        assert len(NAME_TO_SHARD["shard-a"].partitions) == 9
-        assert len(NAME_TO_SHARD["shard-b"].partitions) == 6
+        assert len(URL_TO_SHARD["shard-a"].partitions) == 9
+        assert len(URL_TO_SHARD["shard-b"].partitions) == 6
 
 
 class TestRebalanceMovesOnlyOnePartition:
@@ -95,8 +94,8 @@ class TestRebalanceMovesOnlyOnePartition:
                 balance_shards()
 
         # then exactly one partition moved
-        assert len(NAME_TO_SHARD["shard-a"].partitions) == 19
-        assert len(NAME_TO_SHARD["shard-b"].partitions) == 3
+        assert len(URL_TO_SHARD["shard-a"].partitions) == 19
+        assert len(URL_TO_SHARD["shard-b"].partitions) == 3
 
 
 class TestRebalanceUsesTryLock:
@@ -129,8 +128,8 @@ class TestRebalanceUsesTryLock:
                 t2.join(timeout=5)
 
         # then at most one partition was moved (one call skipped due to TryLock)
-        total_a = len(NAME_TO_SHARD["shard-a"].partitions)
-        total_b = len(NAME_TO_SHARD["shard-b"].partitions)
+        total_a = len(URL_TO_SHARD["shard-a"].partitions)
+        total_b = len(URL_TO_SHARD["shard-b"].partitions)
         assert total_a + total_b == 15  # no partitions lost
         # each call moves at most one, so at most 2 moved (if both ran sequentially)
         # but no more than that — proving neither interfered with the other

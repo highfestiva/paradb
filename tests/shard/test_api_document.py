@@ -1,11 +1,9 @@
 """Tests for the POST /document and DELETE /document REST endpoints."""
 
-import uuid
-
-import pytest
 from fastapi.testclient import TestClient
-
+import pytest
 from shard.app import app
+import uuid
 
 
 @pytest.fixture

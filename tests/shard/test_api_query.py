@@ -1,9 +1,7 @@
 """Tests for the POST /query REST endpoint."""
 
-import uuid
-
-import pytest
 from fastapi.testclient import TestClient
+import pytest
 
 from shard.app import app
 

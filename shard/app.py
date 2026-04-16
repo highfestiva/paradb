@@ -13,16 +13,16 @@ from .document_storage import partition_index_for_id, write_document, read_docum
 from .query_engine import execute_query
 from .document_locking import get_partition_lock, get_document_lock
 from .orchestrator_command import OrchestratorCommand
+from .url import get_host_url
 from shared.file_utils import osfunc_retry
 from shared.types.shard import ShardInfo, ShardPartitionInfo
 
 
 DATA_DIR = os.environ.get("DATA_DIR", "./data/")
-SHARD_SERVICE_PORT = int(os.environ.get("SHARD_SERVICE_PORT", "3357"))
 
 app = FastAPI()
 shards: list[ShardPartitionInfo] = []
-partition_to_shard_host: dict[int, str] = {}
+partition_to_shard_url: dict[int, str] = {}
 
 
 @app.post("/document", status_code=201)
@@ -43,14 +43,14 @@ async def create_or_upsert_document(request: Request):
         body["_id"] = str(doc_id)
 
     partition_idx = partition_index_for_id(doc_id)
-    owner = partition_to_shard_host.get(partition_idx)
-    hostname = socket.gethostname()
+    owner_url = partition_to_shard_url.get(partition_idx)
+    url = get_host_url()
 
-    if owner and owner != hostname:
+    if owner_url and owner_url != url:
         if is_forwarded:
             return JSONResponse(status_code=503, content={"error": "retry", "detail": "partition not owned"})
         resp = requests.post(
-            f"http://{owner}:{SHARD_SERVICE_PORT}/document",
+            f"{owner_url}/document",
             json=body,
             headers={"X-Forwarded": "true"},
         )
@@ -77,11 +77,11 @@ async def remove_document(doc_id: str):
         return JSONResponse(status_code=400, content={"error": "invalid document ID"})
 
     partition_idx = partition_index_for_id(doc_id_uuid)
-    owner = partition_to_shard_host.get(partition_idx)
-    hostname = socket.gethostname()
+    owner_url = partition_to_shard_url.get(partition_idx)
+    url = get_host_url()
 
-    if owner and owner != hostname:
-        resp = requests.delete(f"http://{owner}:{SHARD_SERVICE_PORT}/document/{doc_id}")
+    if owner_url and owner_url != url:
+        resp = requests.delete(f"{owner_url}/document/{doc_id}")
         return JSONResponse(status_code=resp.status_code, content=resp.json())
 
     rw_lock = get_partition_lock(partition_idx)
@@ -117,14 +117,14 @@ def update_shards(shard_partition_infos: list[ShardPartitionInfo]):
     shards = shard_partition_infos
     for shard in shard_partition_infos:
         for partition in shard.partitions:
-            partition_to_shard_host[partition] = shard.hostname
+            partition_to_shard_url[partition] = shard.url
     return {"status": 0}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    hostname = socket.gethostname()
-    shard_info = ShardInfo(hostname=hostname, load=0.0)
+    url = get_host_url()
+    shard_info = ShardInfo(url=url, load=0.0)
     OrchestratorCommand().update_shard(shard_info)
     yield
 

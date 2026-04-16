@@ -1,13 +1,13 @@
 """Tests for write forwarding when a shard does not own the target partition."""
 
-import uuid
-from unittest.mock import patch, MagicMock
-
-import pytest
 from fastapi.testclient import TestClient
+import pytest
+from unittest.mock import patch, MagicMock
+import uuid
 
 from shard.app import app
 from shard.document_storage import partition_index_for_id
+from shard.url import get_host_url
 
 
 @pytest.fixture
@@ -33,9 +33,9 @@ class TestWriteToNonOwnedPartitionForwards:
         partition_idx = partition_index_for_id(uuid.UUID(doc_id))
 
         import shard.app as shard_app
-        original_mapping = shard_app.partition_to_shard_host.copy()
+        original_mapping = shard_app.partition_to_shard_url.copy()
         # set up: this partition is owned by "other-shard"
-        shard_app.partition_to_shard_host[partition_idx] = "other-shard"
+        shard_app.partition_to_shard_url[partition_idx] = "other-shard"
 
         mock_response = MagicMock()
         mock_response.status_code = 201
@@ -54,8 +54,8 @@ class TestWriteToNonOwnedPartitionForwards:
             # and the response is proxied back
             assert response.status_code == 201
         finally:
-            shard_app.partition_to_shard_host.clear()
-            shard_app.partition_to_shard_host.update(original_mapping)
+            shard_app.partition_to_shard_url.clear()
+            shard_app.partition_to_shard_url.update(original_mapping)
 
 
 class TestForwardedWriteToNonOwnedReturnsRetry:
@@ -65,8 +65,8 @@ class TestForwardedWriteToNonOwnedReturnsRetry:
         partition_idx = partition_index_for_id(uuid.UUID(doc_id))
 
         import shard.app as shard_app
-        original_mapping = shard_app.partition_to_shard_host.copy()
-        shard_app.partition_to_shard_host[partition_idx] = "yet-another-shard"
+        original_mapping = shard_app.partition_to_shard_url.copy()
+        shard_app.partition_to_shard_url[partition_idx] = "yet-another-shard"
 
         try:
             # when we POST with the forwarded flag set
@@ -79,8 +79,8 @@ class TestForwardedWriteToNonOwnedReturnsRetry:
             # then we get an error response (not another forward)
             assert response.status_code in (409, 503, 307)
         finally:
-            shard_app.partition_to_shard_host.clear()
-            shard_app.partition_to_shard_host.update(original_mapping)
+            shard_app.partition_to_shard_url.clear()
+            shard_app.partition_to_shard_url.update(original_mapping)
 
 
 class TestForwardedWriteToOwnedPartitionSucceeds:
@@ -90,10 +90,9 @@ class TestForwardedWriteToOwnedPartitionSucceeds:
         partition_idx = partition_index_for_id(uuid.UUID(doc_id))
 
         import shard.app as shard_app
-        import socket
-        hostname = socket.gethostname()
-        original_mapping = shard_app.partition_to_shard_host.copy()
-        shard_app.partition_to_shard_host[partition_idx] = hostname
+        url = get_host_url()
+        original_mapping = shard_app.partition_to_shard_url.copy()
+        shard_app.partition_to_shard_url[partition_idx] = url
 
         try:
             # when we POST with the forwarded flag
@@ -108,5 +107,5 @@ class TestForwardedWriteToOwnedPartitionSucceeds:
             data = response.json()
             assert data["_id"] == doc_id
         finally:
-            shard_app.partition_to_shard_host.clear()
-            shard_app.partition_to_shard_host.update(original_mapping)
+            shard_app.partition_to_shard_url.clear()
+            shard_app.partition_to_shard_url.update(original_mapping)

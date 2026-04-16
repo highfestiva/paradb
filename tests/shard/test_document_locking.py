@@ -1,11 +1,9 @@
 """Tests for document locking — per-document write lock and partition halt lock."""
 
-import threading
-import time
-import uuid
 import os
-
 import pytest
+import threading
+import uuid
 
 from shard.document_storage import write_document, partition_index_for_id
 from shard.document_locking import get_partition_lock, get_document_lock, reset as reset_locks

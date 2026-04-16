@@ -1,8 +1,6 @@
 """Tests for query scanning — reading all documents from disk and filtering."""
 
 import os
-import uuid
-
 import pytest
 
 from shard.document_storage import write_document

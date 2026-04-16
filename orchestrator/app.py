@@ -3,10 +3,10 @@
 from fastapi import FastAPI
 
 from .balancer import balance_shards
-from .partitions import init as partitions_init, get_free_partitions
-from .shards import init as shards_init, fetch_shard, release_shard
+from .partitions import get_free_partitions
+from .shards import all_shards, fetch_shard, release_shard
 from .shard_command import ShardCommand
-from shared.types.shard import ShardInfo
+from shared.types.shard import ShardInfo, ShardPartitionInfo
 
 
 app = FastAPI()
@@ -24,6 +24,16 @@ def update_shard(shard_info: ShardInfo):
 
 
 @app.delete("/shard")
-def delete_shard(hostname: str):
-    release_shard(hostname)
+def delete_shard(url: str):
+    release_shard(url)
     return {"status": 0}
+
+
+@app.get("/shard")
+def get_shards():
+    shards = []
+    for shard in all_shards():
+        pis = [p.index for p in shard.partitions]
+        shard_partitions = ShardPartitionInfo.model_construct(url=shard.url, load=shard.load, partitions=pis)
+        shards.append(shard_partitions)
+    return {'status': 0, 'shards': shards}

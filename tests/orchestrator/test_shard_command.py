@@ -1,8 +1,7 @@
 """Tests for the HTTP commands the orchestrator sends to shards."""
 
-from unittest.mock import patch, MagicMock
-
 import pytest
+from unittest.mock import patch, MagicMock
 
 from orchestrator.shard_command import ShardCommand, ShardBroadcastCommand
 from orchestrator.shards import Shard

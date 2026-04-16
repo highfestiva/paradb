@@ -1,9 +1,7 @@
 """Tests for shard startup lifecycle and heartbeat."""
 
 import os
-from unittest.mock import patch, MagicMock, call
-
-import pytest
+from unittest.mock import patch, MagicMock
 
 
 class TestShardRegistersOnStartup:
@@ -19,7 +17,7 @@ class TestShardRegistersOnStartup:
             with TestClient(app):
                 pass
 
-            # then POST /shard was called with hostname and load
+            # then POST /shard was called
             assert mock_post.called
             call_args = mock_post.call_args
             assert "/shard" in call_args[0][0] or "/shard" in str(call_args)

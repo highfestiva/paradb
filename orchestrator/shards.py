@@ -7,15 +7,15 @@ STALE_TIMEOUT = 15  # seconds
 
 
 class Shard:
-    def __init__(self, hostname: str):
-        self.hostname: str = hostname
+    def __init__(self, url: str):
+        self.url: str = url
         self.partitions: list[Partition] = []
         self.load: float = 0.0
         self.last_heartbeat: float = time.time()
 
     def add_partitions(self, partitions: list[Partition]):
         for partition in partitions:
-            partition.owner = self.hostname
+            partition.owner = self.url
             self.partitions.append(partition)
 
     def remove_partition(self, partition: Partition):
@@ -29,7 +29,7 @@ class Shard:
         self.load = 0.0
 
 
-NAME_TO_SHARD: dict[str, Shard] = {}
+URL_TO_SHARD: dict[str, Shard] = {}
 
 
 def init():
@@ -37,29 +37,29 @@ def init():
 
 
 def all_shards():
-    return NAME_TO_SHARD.values()
+    return URL_TO_SHARD.values()
 
 
 def fetch_shard(shard_info: ShardInfo):
-    shard = NAME_TO_SHARD.get(shard_info.hostname)
+    shard = URL_TO_SHARD.get(shard_info.url)
     if not shard:
-        shard = NAME_TO_SHARD[shard_info.hostname] = Shard(shard_info.hostname)
+        shard = URL_TO_SHARD[shard_info.url] = Shard(shard_info.url)
     shard.load = shard_info.load
     shard.last_heartbeat = time.time()
     return shard
 
 
-def release_shard(name: str):
-    shard = NAME_TO_SHARD.get(name)
+def release_shard(url: str):
+    shard = URL_TO_SHARD.get(url)
     if shard:
         shard.release()
-        del NAME_TO_SHARD[name]
+        del URL_TO_SHARD[url]
 
 
 def remove_stale_shards():
     """Remove shards that haven't sent a heartbeat within STALE_TIMEOUT seconds."""
     now = time.time()
-    stale = [name for name, shard in NAME_TO_SHARD.items()
+    stale = [url for url, shard in URL_TO_SHARD.items()
              if now - shard.last_heartbeat > STALE_TIMEOUT]
-    for name in stale:
-        release_shard(name)
+    for url in stale:
+        release_shard(url)

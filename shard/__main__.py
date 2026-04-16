@@ -1,4 +1,5 @@
-from .app import app, SHARD_SERVICE_PORT  # noqa: F401
+from .app import app
+from .url import SHARD_SERVICE_PORT
 
 import uvicorn
 

@@ -1,11 +1,10 @@
 """Tests for document storage — writing, reading, and deleting JSON documents on disk."""
 
+import glob
 import json
 import os
-import uuid
-import glob
-
 import pytest
+import uuid
 
 from shard.document_storage import (
     write_document,
