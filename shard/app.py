@@ -51,11 +51,12 @@ async def create_or_upsert_document(request: Request):
     if owner_url and owner_url != url:
         if is_forwarded:
             return JSONResponse(status_code=503, content={"error": "retry", "detail": "partition not owned"})
-        resp = httpx.post(
-            f"{owner_url}/document",
-            json=body,
-            headers={"X-Forwarded": "true"},
-        )
+        async with httpx.AsyncClient() as http_client:
+            resp = await http_client.post(
+                f"{owner_url}/document",
+                json=body,
+                headers={"X-Forwarded": "true"},
+            )
         return JSONResponse(status_code=resp.status_code, content=resp.json())
 
     try:
@@ -83,7 +84,8 @@ async def remove_document(doc_id: str):
     url = get_host_url()
 
     if owner_url and owner_url != url:
-        resp = httpx.delete(f"{owner_url}/document/{doc_id}")
+        async with httpx.AsyncClient() as http_client:
+            resp = await http_client.delete(f"{owner_url}/document/{doc_id}")
         return JSONResponse(status_code=resp.status_code, content=resp.json())
 
     rw_lock = get_partition_lock(partition_idx)
@@ -125,10 +127,10 @@ def update_shards(shard_partition_infos: list[ShardPartitionInfo]):
     return {"status": 0}
 
 
-def update_shard():
+async def update_shard():
     url = get_host_url()
     shard_info = ShardInfo(url=url, load=0.0)
-    OrchestratorCommand().update_shard(shard_info)
+    await OrchestratorCommand().update_shard(shard_info)
 
 
 async def _heartbeat_loop():
@@ -136,7 +138,7 @@ async def _heartbeat_loop():
     while True:
         try:
             print('sending update -> orchestrator')
-            update_shard()
+            await update_shard()
         except Exception as ex:
             print("Shard wasn't updated:", ex)
         await asyncio.sleep(HEARTBEAT_INTERVAL)

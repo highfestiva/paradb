@@ -3,7 +3,7 @@
 from fastapi.testclient import TestClient
 import pytest
 import time
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 from orchestrator.app import app
 from orchestrator.partitions import init as partitions_init, get_free_partitions
@@ -25,14 +25,26 @@ def client():
     return TestClient(app)
 
 
+def _patch_shard_command():
+    """Patch ShardCommand with async-compatible mock methods."""
+    p = patch("orchestrator.app.ShardCommand")
+    mock = p.start()
+    mock.return_value.send_partitions = AsyncMock()
+    mock.return_value.halt_flush_partition_writes = AsyncMock()
+    return p, mock
+
+
 class TestPostShardRegistersNewShard:
     def test_shard_stored_in_registry(self, client):
         # given a new shard
         shard_info = {"url": "http://shard-1:12345", "load": 0.5}
 
         # when we POST /shard
-        with patch("orchestrator.app.ShardCommand"):
+        p, _ = _patch_shard_command()
+        try:
             response = client.post("/shard", json=shard_info)
+        finally:
+            p.stop()
 
         # then the shard is in the registry
         assert response.status_code == 200
@@ -42,12 +54,14 @@ class TestPostShardRegistersNewShard:
 class TestPostShardUpdatesLoad:
     def test_load_updated_not_duplicated(self, client):
         # given an existing shard
-        with patch("orchestrator.app.ShardCommand"):
+        p, _ = _patch_shard_command()
+        try:
             client.post("/shard", json={"url": "http://shard-1:12345", "load": 0.5})
 
-        # when we POST again with different load
-        with patch("orchestrator.app.ShardCommand"):
+            # when we POST again with different load
             client.post("/shard", json={"url": "http://shard-1:12345", "load": 0.8})
+        finally:
+            p.stop()
 
         # then load is updated, not duplicated
         assert URL_TO_SHARD["http://shard-1:12345"].load == 0.8
@@ -58,8 +72,11 @@ class TestPostShardTriggersPartitionAllocation:
     def test_partitions_assigned_to_new_shard(self, client):
         # given free partitions exist (from init)
         # when we register a new shard
-        with patch("orchestrator.app.ShardCommand"):
+        p, _ = _patch_shard_command()
+        try:
             client.post("/shard", json={"url": "http://shard-1:12345", "load": 0.0})
+        finally:
+            p.stop()
 
         # then some partitions are assigned
         shard = URL_TO_SHARD["http://shard-1:12345"]
@@ -69,8 +86,11 @@ class TestPostShardTriggersPartitionAllocation:
 class TestDeleteShardRemovesGracefully:
     def test_shard_removed_and_partitions_freed(self, client):
         # given a registered shard with partitions
-        with patch("orchestrator.app.ShardCommand"):
+        p, _ = _patch_shard_command()
+        try:
             client.post("/shard", json={"url": "http://shard-1:12345", "load": 0.0})
+        finally:
+            p.stop()
         assert len(URL_TO_SHARD["http://shard-1:12345"].partitions) > 0
 
         # when we DELETE /shard
@@ -84,8 +104,11 @@ class TestDeleteShardRemovesGracefully:
 class TestStaleShard:
     def test_removed_after_15_seconds(self, client):
         # given a registered shard
-        with patch("orchestrator.app.ShardCommand"):
+        p, _ = _patch_shard_command()
+        try:
             client.post("/shard", json={"url": "http://shard-1:12345", "load": 0.0})
+        finally:
+            p.stop()
 
         # when 15+ seconds pass without a heartbeat
         shard = URL_TO_SHARD["http://shard-1:12345"]
@@ -98,11 +121,17 @@ class TestStaleShard:
 
     def test_returns_list_of_removed_shard_urls(self, client):
         # given two shards, one stale
-        with patch("orchestrator.app.ShardCommand"), \
-             patch("orchestrator.balancer.ShardCommand"), \
-             patch("orchestrator.balancer.ShardBroadcastCommand"):
-            client.post("/shard", json={"url": "http://shard-1:12345", "load": 0.0})
-            client.post("/shard", json={"url": "http://shard-2:12345", "load": 0.0})
+        p, _ = _patch_shard_command()
+        with patch("orchestrator.balancer.ShardCommand") as MockBalCmd, \
+             patch("orchestrator.balancer.ShardBroadcastCommand") as MockBalBroadcast:
+            MockBalCmd.return_value.halt_flush_partition_writes = AsyncMock()
+            MockBalCmd.return_value.send_partitions = AsyncMock()
+            MockBalBroadcast.return_value.send_partitions = AsyncMock()
+            try:
+                client.post("/shard", json={"url": "http://shard-1:12345", "load": 0.0})
+                client.post("/shard", json={"url": "http://shard-2:12345", "load": 0.0})
+            finally:
+                p.stop()
 
         URL_TO_SHARD["http://shard-1:12345"].last_heartbeat = time.time() - 16
 
@@ -117,11 +146,17 @@ class TestStaleShard:
 
     def test_returns_empty_list_when_no_shards_stale(self, client):
         # given two shards with recent heartbeats
-        with patch("orchestrator.app.ShardCommand"), \
-             patch("orchestrator.balancer.ShardCommand"), \
-             patch("orchestrator.balancer.ShardBroadcastCommand"):
-            client.post("/shard", json={"url": "http://shard-1:12345", "load": 0.0})
-            client.post("/shard", json={"url": "http://shard-2:12345", "load": 0.0})
+        p, _ = _patch_shard_command()
+        with patch("orchestrator.balancer.ShardCommand") as MockBalCmd, \
+             patch("orchestrator.balancer.ShardBroadcastCommand") as MockBalBroadcast:
+            MockBalCmd.return_value.halt_flush_partition_writes = AsyncMock()
+            MockBalCmd.return_value.send_partitions = AsyncMock()
+            MockBalBroadcast.return_value.send_partitions = AsyncMock()
+            try:
+                client.post("/shard", json={"url": "http://shard-1:12345", "load": 0.0})
+                client.post("/shard", json={"url": "http://shard-2:12345", "load": 0.0})
+            finally:
+                p.stop()
 
         # when remove_stale_shards is called
         from orchestrator.shards import remove_stale_shards
@@ -135,12 +170,18 @@ class TestStaleShard:
 
     def test_removes_multiple_stale_shards_at_once(self, client):
         # given three shards, two of them stale
-        with patch("orchestrator.app.ShardCommand"), \
-             patch("orchestrator.balancer.ShardCommand"), \
-             patch("orchestrator.balancer.ShardBroadcastCommand"):
-            client.post("/shard", json={"url": "http://shard-1:12345", "load": 0.0})
-            client.post("/shard", json={"url": "http://shard-2:12345", "load": 0.0})
-            client.post("/shard", json={"url": "http://shard-3:12345", "load": 0.0})
+        p, _ = _patch_shard_command()
+        with patch("orchestrator.balancer.ShardCommand") as MockBalCmd, \
+             patch("orchestrator.balancer.ShardBroadcastCommand") as MockBalBroadcast:
+            MockBalCmd.return_value.halt_flush_partition_writes = AsyncMock()
+            MockBalCmd.return_value.send_partitions = AsyncMock()
+            MockBalBroadcast.return_value.send_partitions = AsyncMock()
+            try:
+                client.post("/shard", json={"url": "http://shard-1:12345", "load": 0.0})
+                client.post("/shard", json={"url": "http://shard-2:12345", "load": 0.0})
+                client.post("/shard", json={"url": "http://shard-3:12345", "load": 0.0})
+            finally:
+                p.stop()
 
         URL_TO_SHARD["http://shard-1:12345"].last_heartbeat = time.time() - 16
         URL_TO_SHARD["http://shard-3:12345"].last_heartbeat = time.time() - 16
@@ -158,8 +199,11 @@ class TestStaleShard:
 class TestShardHeartbeatsWithin15Seconds:
     def test_shard_not_removed(self, client):
         # given a registered shard that heartbeats within 15 seconds
-        with patch("orchestrator.app.ShardCommand"):
+        p, _ = _patch_shard_command()
+        try:
             client.post("/shard", json={"url": "http://shard-1:12345", "load": 0.0})
+        finally:
+            p.stop()
 
         shard = URL_TO_SHARD["http://shard-1:12345"]
         shard.last_heartbeat = time.time() - 10  # 10 seconds ago, still fresh
@@ -175,8 +219,11 @@ class TestShardHeartbeatsWithin15Seconds:
 class TestStaleShardPartitionRelease:
     def test_stale_shard_partitions_become_free(self, client):
         # given a shard that owns all partitions
-        with patch("orchestrator.app.ShardCommand"):
+        p, _ = _patch_shard_command()
+        try:
             client.post("/shard", json={"url": "http://shard-1:12345", "load": 0.0})
+        finally:
+            p.stop()
 
         shard = URL_TO_SHARD["http://shard-1:12345"]
         assert len(shard.partitions) == 1024

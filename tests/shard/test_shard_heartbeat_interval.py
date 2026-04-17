@@ -1,7 +1,7 @@
 """Tests for the shard heartbeat interval mechanism."""
 
 import asyncio
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 
 class TestHeartbeatInterval:
@@ -17,8 +17,13 @@ class TestHeartbeatInterval:
             if len(sleep_args) >= 2:
                 raise asyncio.CancelledError()
 
-        with patch("shard.orchestrator_command.httpx.post") as mock_post:
-            mock_post.return_value = MagicMock(status_code=200)
+        mock_client = AsyncMock()
+        mock_client.post.return_value = MagicMock(status_code=200)
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_cm.__aexit__ = AsyncMock(return_value=False)
+
+        with patch("shard.orchestrator_command.httpx.AsyncClient", return_value=mock_cm):
 
             # when we run the heartbeat coroutine with patched sleep
             from shard.app import _heartbeat_loop

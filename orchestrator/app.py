@@ -21,10 +21,10 @@ async def _monitor_stale_shards():
         await asyncio.sleep(MONITOR_INTERVAL)
         removed = remove_stale_shards()
         if removed:
-            _redistribute_free_partitions()
+            await _redistribute_free_partitions()
 
 
-def _redistribute_free_partitions():
+async def _redistribute_free_partitions():
     """Distribute free partitions round-robin across remaining shards and broadcast."""
     shards = list(all_shards())
     if not shards:
@@ -35,7 +35,7 @@ def _redistribute_free_partitions():
     for partition in free:
         smallest = min(shards, key=lambda s: len(s.partitions))
         smallest.add_partitions([partition])
-    ShardBroadcastCommand(shards).send_partitions()
+    await ShardBroadcastCommand(shards).send_partitions()
 
 
 @asynccontextmanager
@@ -53,13 +53,13 @@ app = FastAPI(lifespan=_lifespan)
 
 
 @app.post("/shard")
-def update_shard(shard_info: ShardInfo):
+async def update_shard(shard_info: ShardInfo):
     shard = fetch_shard(shard_info)
     free_partitions = list(get_free_partitions())
     shard.add_partitions(free_partitions)
     if free_partitions:
-        ShardCommand(shard).send_partitions()
-    balance_shards()
+        await ShardCommand(shard).send_partitions()
+    await balance_shards()
     return {"status": 0}
 
 

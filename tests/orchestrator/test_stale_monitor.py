@@ -5,7 +5,7 @@ import time
 import warnings
 
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.testclient import TestClient
 
 from orchestrator.app import app
@@ -35,6 +35,17 @@ def _register_shard(url: str, partition_indices: list[int] | None = None) -> Sha
     return shard
 
 
+def _mock_async_client():
+    """Create a mock httpx.AsyncClient with async context manager support."""
+    mock_client = AsyncMock()
+    mock_client.post.return_value = MagicMock(status_code=200)
+    mock_client.delete.return_value = MagicMock(status_code=200)
+    mock_cm = MagicMock()
+    mock_cm.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_cm.__aexit__ = AsyncMock(return_value=False)
+    return mock_cm, mock_client
+
+
 class TestStaleMonitorTask:
     def test_monitoring_task_calls_remove_stale_shards(self):
         # given a mock remove_stale_shards
@@ -50,7 +61,8 @@ class TestStaleMonitorTask:
 
 
 class TestPartitionRedistributionAfterStaleRemoval:
-    def test_free_partitions_redistributed_to_remaining_shards(self):
+    @pytest.mark.asyncio
+    async def test_free_partitions_redistributed_to_remaining_shards(self):
         # given three shards, each with roughly 1/3 of partitions
         s1 = _register_shard("http://shard-1:3357", list(range(0, 342)))
         s2 = _register_shard("http://shard-2:3357", list(range(342, 684)))
@@ -58,11 +70,11 @@ class TestPartitionRedistributionAfterStaleRemoval:
 
         # when one shard goes stale and is removed
         s2.last_heartbeat = time.time() - 16
-        with patch("orchestrator.shard_command.httpx.post"):
-            with patch("orchestrator.shard_command.httpx.delete"):
-                from orchestrator.app import _redistribute_free_partitions
-                remove_stale_shards()
-                _redistribute_free_partitions()
+        mock_cm, mock_client = _mock_async_client()
+        with patch("orchestrator.shard_command.httpx.AsyncClient", return_value=mock_cm):
+            from orchestrator.app import _redistribute_free_partitions
+            remove_stale_shards()
+            await _redistribute_free_partitions()
 
         # then no partitions are free (all reassigned)
         free = list(get_free_partitions())
@@ -72,34 +84,38 @@ class TestPartitionRedistributionAfterStaleRemoval:
         counts = sorted([len(s.partitions) for s in URL_TO_SHARD.values()])
         assert counts[-1] - counts[0] <= 1
 
-    def test_round_robin_distribution_is_balanced(self):
+    @pytest.mark.asyncio
+    async def test_round_robin_distribution_is_balanced(self):
         # given two remaining shards with 100 partitions each, plus 824 free
         s1 = _register_shard("http://shard-1:3357", list(range(0, 100)))
         s2 = _register_shard("http://shard-2:3357", list(range(100, 200)))
 
         # when free partitions are redistributed
-        with patch("orchestrator.shard_command.httpx.post"):
+        mock_cm, mock_client = _mock_async_client()
+        with patch("orchestrator.shard_command.httpx.AsyncClient", return_value=mock_cm):
             from orchestrator.app import _redistribute_free_partitions
-            _redistribute_free_partitions()
+            await _redistribute_free_partitions()
 
         # then each shard has 512 partitions (1024 / 2)
         assert len(s1.partitions) == 512
         assert len(s2.partitions) == 512
 
-    def test_redistribution_broadcasts_to_all_shards(self):
+    @pytest.mark.asyncio
+    async def test_redistribution_broadcasts_to_all_shards(self):
         # given two shards, one stale
         s1 = _register_shard("http://shard-1:3357", list(range(0, 512)))
         s2 = _register_shard("http://shard-2:3357", list(range(512, 1024)))
         s2.last_heartbeat = time.time() - 16
 
         # when stale removal and redistribution happen
-        with patch("orchestrator.shard_command.httpx.post") as mock_post:
+        mock_cm, mock_client = _mock_async_client()
+        with patch("orchestrator.shard_command.httpx.AsyncClient", return_value=mock_cm):
             from orchestrator.app import _redistribute_free_partitions
             remove_stale_shards()
-            _redistribute_free_partitions()
+            await _redistribute_free_partitions()
 
         # then a broadcast was sent (POST to /cmd/partitions on remaining shards)
-        partition_posts = [c for c in mock_post.call_args_list if "/cmd/partitions" in str(c)]
+        partition_posts = [c for c in mock_client.post.call_args_list if "/cmd/partitions" in str(c)]
         assert len(partition_posts) >= 1
 
     def test_no_redistribution_when_no_shards_removed(self):
@@ -116,17 +132,19 @@ class TestPartitionRedistributionAfterStaleRemoval:
         assert len(s1.partitions) == 512
         assert len(s2.partitions) == 512
 
-    def test_no_crash_when_all_shards_stale(self):
+    @pytest.mark.asyncio
+    async def test_no_crash_when_all_shards_stale(self):
         # given one shard that goes stale (no remaining shards)
         s1 = _register_shard("http://shard-1:3357", list(range(0, 1024)))
         s1.last_heartbeat = time.time() - 16
 
         # when stale removal and redistribution happen
-        with patch("orchestrator.shard_command.httpx.post"):
+        mock_cm, mock_client = _mock_async_client()
+        with patch("orchestrator.shard_command.httpx.AsyncClient", return_value=mock_cm):
             from orchestrator.app import _redistribute_free_partitions
             remove_stale_shards()
             # then no crash occurs
-            _redistribute_free_partitions()
+            await _redistribute_free_partitions()
 
         # and all partitions are free
         free = list(get_free_partitions())

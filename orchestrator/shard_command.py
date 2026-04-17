@@ -9,13 +9,14 @@ class ShardCommand:
     def __init__(self, shard: Shard):
         self.shard = shard
 
-    def halt_flush_partition_writes(self, partition_index: int):
+    async def halt_flush_partition_writes(self, partition_index: int):
         """Tell the shard to halt writes on a specific partition."""
         print('sending halt_flush_partition_writes -> shard', self.shard.url)
         url = f"{self.shard.url}/cmd/partition"
-        httpx.delete(url, params={"partition_index": partition_index})
+        async with httpx.AsyncClient() as client:
+            await client.delete(url, params={"partition_index": partition_index})
 
-    def send_partitions(self):
+    async def send_partitions(self):
         """Send the current partition table to this shard."""
         print('sending partitions -> shard', self.shard.url)
         payload = []
@@ -26,7 +27,8 @@ class ShardCommand:
                 "partitions": [p.index for p in s.partitions],
             })
         url = f"{self.shard.url}/cmd/partitions"
-        httpx.post(url, json=payload)
+        async with httpx.AsyncClient() as client:
+            await client.post(url, json=payload)
 
 
 class ShardBroadcastCommand:
@@ -35,6 +37,6 @@ class ShardBroadcastCommand:
     def __init__(self, shards: list[Shard]):
         self.shards = shards
 
-    def send_partitions(self):
+    async def send_partitions(self):
         for shard in self.shards:
-            ShardCommand(shard).send_partitions()
+            await ShardCommand(shard).send_partitions()

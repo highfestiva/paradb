@@ -2,7 +2,7 @@
 
 from fastapi.testclient import TestClient
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 import uuid
 
 from shard.app import app
@@ -41,14 +41,20 @@ class TestWriteToNonOwnedPartitionForwards:
         mock_response.status_code = 201
         mock_response.json.return_value = {"_id": doc_id, "name": "forwarded"}
 
+        mock_client = AsyncMock()
+        mock_client.post.return_value = mock_response
+        mock_cm = MagicMock()
+        mock_cm.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_cm.__aexit__ = AsyncMock(return_value=False)
+
         try:
             # when we POST a document whose ID maps to that partition
-            with patch("shard.app.httpx.post", return_value=mock_response) as mock_post:
+            with patch("shard.app.httpx.AsyncClient", return_value=mock_cm):
                 response = client.post("/document", json={"_id": doc_id, "name": "test"})
 
             # then the mock was called with the forwarded flag
-            assert mock_post.called
-            call_args = mock_post.call_args
+            assert mock_client.post.called
+            call_args = mock_client.post.call_args
             assert "other-shard" in call_args[0][0] or "other-shard" in str(call_args)
 
             # and the response is proxied back

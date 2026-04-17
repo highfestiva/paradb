@@ -6,7 +6,7 @@ from shared.try_lock import TryLock
 try_lock = TryLock()
 
 
-def balance_shards():
+async def balance_shards():
     """Balance so each shard have equal number of partitions."""
 
     # only one thread at a time
@@ -23,8 +23,8 @@ def balance_shards():
             biggest = shards_balance[-1]
             partition = biggest.partitions[-1]
             # stop writes from this shard
-            ShardCommand(biggest).halt_flush_partition_writes(partition.index)
+            await ShardCommand(biggest).halt_flush_partition_writes(partition.index)
             biggest.remove_partition(partition)
             smallest.add_partitions([partition])
             # enable writes from all other shards, and finally
-            ShardBroadcastCommand(shards_balance).send_partitions()
+            await ShardBroadcastCommand(shards_balance).send_partitions()

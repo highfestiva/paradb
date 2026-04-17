@@ -14,7 +14,8 @@ def _get_orchestrator_base_url() -> str:
 class OrchestratorCommand:
     """Sends HTTP commands from a shard to the orchestrator."""
 
-    def update_shard(self, shard_info: ShardInfo):
+    async def update_shard(self, shard_info: ShardInfo):
         """Register or heartbeat to the orchestrator."""
         url = f"{_get_orchestrator_base_url()}/shard"
-        httpx.post(url, json=shard_info.model_dump())
+        async with httpx.AsyncClient() as client:
+            await client.post(url, json=shard_info.model_dump())
