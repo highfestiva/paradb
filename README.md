@@ -4,7 +4,7 @@ This is a slow DB for education purposes only. Mostly for mine, I wrote it to le
 
 ## Architecture
 
-This runs in minikube. The DB is written in Python (FastAPI + Uvicorn), has a single **orchestrator** and a number of
+This runs in Kubernetes (Docker Desktop). The DB is written in Python (FastAPI + Uvicorn), has a single **orchestrator** and a number of
 dynamic **shards**. Storage is separate from compute (shared disk volume), and scale-to-zero would be possible to
 implement fairly easily, but the orchestrator would still need to be running. The shards scale horizontally in a linear
 fashion.
@@ -54,8 +54,7 @@ owning shard.
 
 ## Prerequisites
 
-- [Docker Desktop](https://www.docker.com/products/docker-desktop/) with Kubernetes enabled, or
-- [minikube](https://minikube.sigs.k8s.io/docs/start/)
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) with Kubernetes enabled
 - Python 3.11+
 - `kubectl`
 
@@ -71,16 +70,16 @@ python -m orchestrator
 DATA_DIR=./data ORCHESTRATOR_URL=http://localhost:3356 python -m shard
 ```
 
-## Start ParaDB in minikube (Docker driver)
+## Start ParaDB in Kubernetes (Docker Desktop)
 
 ```bash
-scripts/start-minikube.sh
+scripts/k8s-start.sh
 ```
 
 ### Tearing down
 
 ```bash
-scripts/stop-minikube.sh
+scripts/k8s-stop.sh
 ```
 
 ## Running stress tests

@@ -47,7 +47,7 @@ metadata:
   name: shard
   namespace: paradb
 spec:
-  type: NodePort
+  type: LoadBalancer
   selector:
     app: shard
   ports:
