@@ -36,13 +36,13 @@ owning shard.
 
 ### Key endpoints
 
-| Component   | Endpoint                            | Description                          |
-|-------------|-------------------------------------|--------------------------------------|
-| Shard       | `POST /document`                    | Create/upsert a document             |
-| Shard       | `DELETE /document/{doc_id}`         | Delete a document                    |
-| Shard       | `POST /query`                       | MongoDB-like query (`$gt`, `$lt`, `$exists`) |
-| Orchestrator| `POST /shard`                       | Register/heartbeat a shard           |
-| Orchestrator| `DELETE /shard?hostname=...`        | Gracefully remove a shard            |
+| Component   | Endpoint                               | Description                          |
+|-------------|----------------------------------------|--------------------------------------|
+| Shard       | `POST /db/document`                    | Create/upsert a document             |
+| Shard       | `DELETE /db/document/{doc_id}`         | Delete a document                    |
+| Shard       | `POST /db/query`                       | MongoDB-like query (`$gt`, `$lt`, `$exists`) |
+| Orchestrator| `POST /internal/shard/heartbeat`       | Register/heartbeat a shard           |
+| Orchestrator| `DELETE /internal/shard?hostname=...`  | Gracefully remove a shard            |
 
 ### Environment variables
 
