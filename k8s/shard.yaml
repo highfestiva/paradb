@@ -18,7 +18,7 @@ spec:
       containers:
         - name: shard
           image: paradb-shard:latest
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3357
           env:
@@ -26,6 +26,14 @@ spec:
               value: /data/
             - name: ORCHESTRATOR_URL
               value: http://orchestrator:3356
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+            - name: SHARD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
           volumeMounts:
             - name: data
               mountPath: /data
@@ -46,12 +54,15 @@ kind: Service
 metadata:
   name: shard
   namespace: paradb
+  labels:
+    app: shard
 spec:
   type: LoadBalancer
   selector:
     app: shard
   ports:
-    - port: 3357
+    - name: loadbalance
+      port: 3357
       targetPort: 3357
 ---
 apiVersion: autoscaling/v2
@@ -73,3 +84,19 @@ spec:
         target:
           type: Utilization
           averageUtilization: 60
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: shard
+  namespace: paradb
+  labels:
+    release: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: shard
+  endpoints:
+    - port: loadbalance
+      path: /metrics/
+      interval: 15s

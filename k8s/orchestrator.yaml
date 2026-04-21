@@ -18,7 +18,7 @@ spec:
       containers:
         - name: orchestrator
           image: paradb-orchestrator:latest
-          imagePullPolicy: Never
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3356
           resources:
@@ -35,6 +35,7 @@ metadata:
   name: orchestrator
   namespace: paradb
 spec:
+  type: LoadBalancer
   selector:
     app: orchestrator
   ports:

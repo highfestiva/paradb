@@ -1,9 +1,11 @@
+from prometheus_client import Counter, Histogram
 import json
 import os
 import uuid
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 import httpx
+import socket
 
 from shard.document_locking import get_partition_lock, get_document_lock
 from shard.document_storage import partition_index_for_id, write_document, delete_document
@@ -11,13 +13,22 @@ from shard.partitions import partition_to_shard_url
 from shard.query_engine import execute_query
 from shard.url import get_host_url
 from shared.file_utils import osfunc_retry
+from shared.monitor_duration import monitor_duration
 
 
 DATA_DIR = os.environ.get("DATA_DIR", "./data/")
 db_router = APIRouter(prefix="/db", tags=["shard-db"])
+SHARD_NAME = os.environ.get("SHARD_NAME", socket.gethostname())
+db_upserts_total = Counter("db_upserts_total", "Total database creates+updates", ["shard"]).labels(shard=SHARD_NAME)
+db_deletes_total = Counter("db_deletes_total", "Total database deletes", ["shard"]).labels(shard=SHARD_NAME)
+db_queries_total = Counter("db_queries_total", "Total database queries", ["shard"]).labels(shard=SHARD_NAME)
+db_upsert_hist = Histogram("db_upsert_duration", "DB upsert duration", ["shard"]).labels(shard=SHARD_NAME)
+db_delete_hist = Histogram("db_delete_duration", "DB delete duration", ["shard"]).labels(shard=SHARD_NAME)
+db_query_hist = Histogram("db_query_duration", "DB query duration", ["shard"]).labels(shard=SHARD_NAME)
 
 
 @db_router.post("/document", status_code=201)
+@monitor_duration(db_upsert_hist)
 async def create_or_upsert_document(request: Request):
     """Create or upsert a document. Forwards to owning shard if needed."""
     raw = await request.body()
@@ -58,10 +69,12 @@ async def create_or_upsert_document(request: Request):
     except TimeoutError:
         return JSONResponse(status_code=500, content=dict(error="Unable to write document"))
 
+    db_upserts_total.inc()
     return JSONResponse(status_code=201, content=result)
 
 
 @db_router.delete("/document/{doc_id}")
+@monitor_duration(db_delete_hist)
 async def remove_document(doc_id: str):
     """Delete a document by ID. Treated as a write operation with ownership checks."""
     try:
@@ -86,12 +99,15 @@ async def remove_document(doc_id: str):
 
     if not deleted:
         return JSONResponse(status_code=404, content={"error": "not found"})
+    db_deletes_total.inc()
     return JSONResponse(status_code=200, content={"status": "deleted"})
 
 
 @db_router.post("/query")
+@monitor_duration(db_query_hist)
 async def query_documents(request: Request):
     """Query documents with MongoDB-like filter."""
     body = await request.json()
     results = execute_query(DATA_DIR, body)
+    db_queries_total.inc()
     return JSONResponse(status_code=200, content=results)

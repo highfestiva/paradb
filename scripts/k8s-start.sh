@@ -11,10 +11,17 @@ kubectl config use-context docker-desktop
 docker build -t paradb-orchestrator:latest -f Dockerfile.orchestrator .
 docker build -t paradb-shard:latest        -f Dockerfile.shard .
 
-# 3. Apply the Kubernetes manifests
+# 3. Add service monitor stuff
+helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+helm repo update
+helm upgrade --install monitoring prometheus-community/kube-prometheus-stack \
+  --namespace monitoring \
+  --create-namespace
+
+# 4. Apply the Kubernetes manifests
 kubectl apply -f k8s/
 
-# 4. Wait for pods to become ready
+# 5. Wait for pods to become ready
 echo "Waiting for pods..."
 kubectl -n paradb rollout status deployment/orchestrator --timeout=60s
 kubectl -n paradb rollout status deployment/shard --timeout=60s
