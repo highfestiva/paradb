@@ -18,3 +18,9 @@ class OrchestratorCommand:
         url = f"{_get_orchestrator_base_url()}/internal/shard/heartbeat"
         async with httpx.AsyncClient() as client:
             await client.post(url, json=shard_info.model_dump())
+
+    async def delete_shard(self, url: str):
+        """Register or heartbeat to the orchestrator."""
+        url = f"{_get_orchestrator_base_url()}/internal/shard"
+        async with httpx.AsyncClient() as client:
+            await client.delete(url, params=dict(url=url))

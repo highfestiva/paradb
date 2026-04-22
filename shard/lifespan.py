@@ -16,6 +16,11 @@ async def update_shard():
     await OrchestratorCommand().update_shard(shard_info)
 
 
+async def shutdown_shard():
+    url = get_host_url()
+    await OrchestratorCommand().delete_shard(url)
+
+
 async def _heartbeat_loop():
     """Background coroutine that sends periodic heartbeats to the orchestrator."""
     while True:
@@ -31,6 +36,7 @@ async def _heartbeat_loop():
 async def lifespan(app: FastAPI):
     task = asyncio.create_task(_heartbeat_loop())
     yield
+    await shutdown_shard()
     task.cancel()
     try:
         await task
